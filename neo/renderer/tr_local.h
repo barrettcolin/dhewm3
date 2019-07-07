@@ -1275,6 +1275,15 @@ DRAW_*
 
 ============================================================
 */
+const int VTX_ATTR_ST_OLD = 8;
+const int VTX_ATTR_TANGENT0_OLD = 9;
+const int VTX_ATTR_TANGENT1_OLD = 10;
+const int VTX_ATTR_NORMAL_OLD = 11;
+
+const int VTX_ATTR_ST = 4;
+const int VTX_ATTR_TANGENT0 = 5;
+const int VTX_ATTR_TANGENT1 = 6;
+const int VTX_ATTR_NORMAL = 7;
 
 void	R_ARB2_Init( void );
 void	RB_ARB2_DrawInteractions( void );

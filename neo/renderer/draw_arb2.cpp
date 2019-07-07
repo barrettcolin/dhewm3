@@ -152,10 +152,10 @@ void RB_ARB2_CreateDrawInteractions( const drawSurf_t *surf ) {
 	qglEnable(GL_FRAGMENT_PROGRAM_ARB);
 
 	// enable the vertex arrays
-	qglEnableVertexAttribArrayARB( 8 );
-	qglEnableVertexAttribArrayARB( 9 );
-	qglEnableVertexAttribArrayARB( 10 );
-	qglEnableVertexAttribArrayARB( 11 );
+	qglEnableVertexAttribArrayARB( VTX_ATTR_ST );
+	qglEnableVertexAttribArrayARB( VTX_ATTR_TANGENT0 );
+	qglEnableVertexAttribArrayARB( VTX_ATTR_TANGENT1 );
+	qglEnableVertexAttribArrayARB( VTX_ATTR_NORMAL );
 	qglEnableClientState( GL_COLOR_ARRAY );
 
 	// texture 0 is the normalization cube map for the vector towards the light
@@ -181,10 +181,10 @@ void RB_ARB2_CreateDrawInteractions( const drawSurf_t *surf ) {
 		// set the vertex pointers
 		idDrawVert	*ac = (idDrawVert *)vertexCache.Position( surf->geo->ambientCache );
 		qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( idDrawVert ), ac->color );
-		qglVertexAttribPointerARB( 11, 3, GL_FLOAT, false, sizeof( idDrawVert ), ac->normal.ToFloatPtr() );
-		qglVertexAttribPointerARB( 10, 3, GL_FLOAT, false, sizeof( idDrawVert ), ac->tangents[1].ToFloatPtr() );
-		qglVertexAttribPointerARB( 9, 3, GL_FLOAT, false, sizeof( idDrawVert ), ac->tangents[0].ToFloatPtr() );
-		qglVertexAttribPointerARB( 8, 2, GL_FLOAT, false, sizeof( idDrawVert ), ac->st.ToFloatPtr() );
+		qglVertexAttribPointerARB( VTX_ATTR_NORMAL, 3, GL_FLOAT, false, sizeof( idDrawVert ), ac->normal.ToFloatPtr() );
+		qglVertexAttribPointerARB( VTX_ATTR_TANGENT1, 3, GL_FLOAT, false, sizeof( idDrawVert ), ac->tangents[1].ToFloatPtr() );
+		qglVertexAttribPointerARB( VTX_ATTR_TANGENT0, 3, GL_FLOAT, false, sizeof( idDrawVert ), ac->tangents[0].ToFloatPtr() );
+		qglVertexAttribPointerARB( VTX_ATTR_ST, 2, GL_FLOAT, false, sizeof( idDrawVert ), ac->st.ToFloatPtr() );
 		qglVertexPointer( 3, GL_FLOAT, sizeof( idDrawVert ), ac->xyz.ToFloatPtr() );
 
 		// this may cause RB_ARB2_DrawInteraction to be exacuted multiple
@@ -192,10 +192,10 @@ void RB_ARB2_CreateDrawInteractions( const drawSurf_t *surf ) {
 		RB_CreateSingleDrawInteractions( surf, RB_ARB2_DrawInteraction );
 	}
 
-	qglDisableVertexAttribArrayARB( 8 );
-	qglDisableVertexAttribArrayARB( 9 );
-	qglDisableVertexAttribArrayARB( 10 );
-	qglDisableVertexAttribArrayARB( 11 );
+	qglDisableVertexAttribArrayARB( VTX_ATTR_ST );
+	qglDisableVertexAttribArrayARB( VTX_ATTR_TANGENT0 );
+	qglDisableVertexAttribArrayARB( VTX_ATTR_TANGENT1 );
+	qglDisableVertexAttribArrayARB( VTX_ATTR_NORMAL );
 	qglDisableClientState( GL_COLOR_ARRAY );
 
 	// disable features
@@ -339,6 +339,40 @@ static progDef_t	progs[MAX_GLPROGS] = {
 	// additional programs can be dynamically specified in materials
 };
 
+// replace vertex.attrib[oldId] with vertex.attrib[newId]
+static bool ReplaceVertexAttribute(char *shaderSrc, int oldId, int newId)
+{
+	char oldIdStr[18], newIdStr[18]; // space for "vertex.attrib[XX]
+	{
+		idStr::snPrintf(oldIdStr, sizeof(oldIdStr), "vertex.attrib[%d]", oldId);
+		idStr::snPrintf(newIdStr, sizeof(newIdStr), "vertex.attrib[%d]", newId);
+	}
+
+	const size_t newIdStrLen = strlen(newIdStr);
+	const size_t oldIdStrLen = strlen(oldIdStr);
+
+	// can only overwrite oldIdStr with newIdStr if newIdStr is same or shorter
+	if(newIdStrLen > oldIdStrLen)
+	{
+		common->DPrintf("Can't overwrite %s with %s\n", oldIdStr, newIdStr);
+		return false;
+	}
+
+	for(char *attrSrc = strstr(shaderSrc, oldIdStr); 
+		attrSrc; 
+		attrSrc = strstr(attrSrc, oldIdStr))
+	{
+		memcpy(attrSrc, newIdStr, newIdStrLen);
+		// pad with spaces if oldIdStr is longer than newIdStr
+		for(int i = newIdStrLen; i < oldIdStrLen; ++i)
+		{
+			attrSrc[i] = ' ';
+		}
+	}
+
+	return true;
+}
+
 /*
 =================
 R_LoadARBProgram
@@ -408,6 +442,23 @@ void R_LoadARBProgram( int progIndex ) {
 		return;
 	}
 	end[3] = 0;
+
+	// Shift vertex attributes down (11->7, 10->6 etc) for platforms with
+	// max 8 vertex attributes (e.g. Raspberry Pi VC4)
+	if(progs[progIndex].target == GL_VERTEX_PROGRAM_ARB)
+	{
+		const bool replaceSuccess =
+			ReplaceVertexAttribute(start, VTX_ATTR_NORMAL_OLD, VTX_ATTR_NORMAL) &&
+			ReplaceVertexAttribute(start, VTX_ATTR_TANGENT1_OLD, VTX_ATTR_TANGENT1) &&
+			ReplaceVertexAttribute(start, VTX_ATTR_TANGENT0_OLD, VTX_ATTR_TANGENT0) &&
+			ReplaceVertexAttribute(start, VTX_ATTR_ST_OLD, VTX_ATTR_ST);
+
+		if(!replaceSuccess)
+		{
+			common->DPrintf("Failed to replace vertex attributes\n");
+			return;
+		}
+	}
 
 	qglBindProgramARB( progs[progIndex].target, progs[progIndex].ident );
 	qglGetError();
